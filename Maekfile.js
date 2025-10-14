@@ -171,7 +171,7 @@ if (maek.OS === 'windows') {
 		"-Wno-unused-but-set-variable",
 	];
 	if (maek.OS === "macos") {
-		nfd_common_options.CPP = ['clang', '-Wall', '-Werror', '-g'];
+		nfd_common_options.CPP = ['clang', '-g'];
 	}
 }
 
@@ -219,7 +219,7 @@ if (maek.OS === 'linux') {
 } else if (maek.OS === 'macos') {
 	deps_objects.push(
 		maek.CPP("deps/nfd/nfd_cocoa.m", undefined, {
-			CPP: ['clang', '-ObjC', '-Wall', '-Werror', '-g'],
+			CPP: ['clang', '-ObjC', '-g'],
 			CPPFlags: [...maek.options.CPPFlags, "-Wno-deprecated-declarations"]
 		})
 	);
@@ -365,8 +365,8 @@ function init_maek() {
 		DEFAULT_OPTIONS.CPP = ['g++', '-std=c++17', '-Wall', '-Werror', '-g'];
 		DEFAULT_OPTIONS.LINK = ['g++', '-std=c++17', '-Wall', '-Werror', '-g'];
 	} else if (maek.OS === 'macos') {
-		DEFAULT_OPTIONS.CPP = ['clang++', '-std=c++17', '-Wall', '-Werror', '-g'];
-		DEFAULT_OPTIONS.LINK = ['clang++', '-std=c++17', '-Wall', '-Werror', '-g'];
+		DEFAULT_OPTIONS.CPP = ['clang++', '-std=c++17', '-g'];
+		DEFAULT_OPTIONS.LINK = ['clang++', '-std=c++17', '-g'];
 	}
 
 	//any settings here override 'DEFAULT_OPTIONS':

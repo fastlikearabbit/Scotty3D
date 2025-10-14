@@ -11,17 +11,17 @@
 //       compilation errors go away, and move onto the next problem.
 // Hint: there are 3 parts that need to be fixed.
 
-// Test test_a0_task2_problems_print("a0.task2.problems.print", []() {
-//     std::string str = "str";
-//     int integer = 0;
-//     float flt = 0.1f;
+Test test_a0_task2_problems_print("a0.task2.problems.print", []() {
+    std::string str = "str";
+    int integer = 0;
+    float flt = 0.1f;
 
-// 	// Most common ways of printing a line of text in Scotty3D are:
-//     printf("\n1. printf with format specifiers such as string %s, interger %d, and float %f.\n", str.c_str(), integer, flt)
+	// Most common ways of printing a line of text in Scotty3D are:
+    printf("\n1. printf with format specifiers such as string %s, interger %d, and float %f.\n", str.c_str(), integer, flt);
     
-//     std::cout << "2. std::cout and std::endl with multiple insertion operators like " 
-//               << str + ", " << integer << ", and " << flt << "." << std::endl;
-// });
+    std::cout << "2. std::cout and std::endl with multiple insertion operators like " 
+              << str + ", " << integer << ", and " << flt << "." << std::endl;
+});
 
 // A0T2: Problem 2
 // TODO: We want to pass our target 2D vector through a filter called helper, 
@@ -39,14 +39,17 @@ Test test_a0_task2_problems_numerical("a0.task2.problems.numerical", []() {
     // Ex) let x = 1, y = 4. y / 3 = 4 / 3 = 1.333 > 1, so x < y / 3. Return true.
 
     int factor = 3;
-    auto helper = [&](int x, int y) { return x < (y / factor); };
+    auto helper = [&](int x, int y) { return x < ((float)y / factor); };
 
     int j = 0;
     for (auto& v : target) {
+        int col = 0;
+        int line = j / v.size();
         for (auto& i : v) {
             int y = j >= int(modifiers.size()) ? 0 : modifiers.at(j);
-            i = helper(i, y) ? i : 0;
+            target[line][col] = helper(i, y) ? i : 0;
             j++;
+            col++;
         }
     }
 
@@ -70,7 +73,7 @@ Test test_a0_task2_problems_vector("a0.task2.problems.vector", []() {
     }
 
     // Use iterator to grab the last element of the vector
-    int last_element = *one_to_ten.end();
+    int last_element = *(one_to_ten.end() - 1);
 
     // The last element is surely a 10... right?
     int expected = 10;
@@ -92,12 +95,15 @@ Test test_a0_task2_problems_boolean("a0.task2.problems.boolean", []() {
     for (int i = 0; i < 20; i = i+2) vec2.emplace_back(i);
     for (int i = 0; i < 20; i = i+3) vec3.emplace_back(i);
 
+    // 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+    // 0 2 4 6 8 10 12 14 16 18
+    // 0 3 6 9 12 15 18
     int count = 0;
     for (size_t i = 0; i < vec1.size(); i++) {
         for (size_t j = 0; j < vec2.size(); j++) {
             for (size_t k = 0; k < vec3.size(); k++) {
                 // Check if the numbers at indices i,j,k respectively are the same
-                if ((vec1.at(i) == vec2.at(j)) == vec3.at(k)) count++;
+                if ((vec1.at(i) == vec2.at(j)) && vec2.at(j) == vec3.at(k)) count++;
             }
         }
     }

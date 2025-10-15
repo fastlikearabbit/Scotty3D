@@ -33,7 +33,6 @@ Mat4 Transform::world_to_local() const {
 		return parent_to_local() * parent_->world_to_local();
 	} else {
 		//case where transform doesn't have a parent
-		
 		return parent_to_local();
 	}
 

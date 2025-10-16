@@ -382,15 +382,8 @@ void Pipeline<p, P, flags>::rasterize_line(
 	float dx = std::abs(a.x - b.x);
 	float dy = std::abs(a.y - b.y);
 
-	int i, j;
-
-	if (dx >= dy) {
-		i = 0;
-		j = 1;
-	} else {
-		i = 1;
-		j = 0;
-	}
+	int i = dx < dy;
+	int j = 1 - i;
 
 	if (a[i] > b[i]) {
 		Vec2 temp = a;

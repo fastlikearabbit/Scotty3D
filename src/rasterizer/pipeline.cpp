@@ -459,12 +459,43 @@ void Pipeline<p, P, flags>::rasterize_line(
  *  (Otherwise, speckles or cracks can appear in the final render.)
  * 
  *  For degenerate (co-linear) triangles, you may consider them to not be on any side of an edge.
- * 	Thus, even if two degnerate triangles share an edge that contains a fragment center, you don't need to emit it.
+ * 	Thus, even if two degenerate triangles share an edge that contains a fragment center, you don't need to emit it.
  *  You will not lose points for doing something reasonable when handling this case
  *
  *  This is pretty tricky to get exactly right!
  *
  */
+
+inline std::vector<Vec2> get_ccw(Vec2 v0, Vec2 v1, Vec2 v2) {
+	const float eps = std::numeric_limits<float>::epsilon();
+	const float cross = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
+	
+	if (cross < -eps) {
+		return {v0, v2, v1};
+	}
+	return {v0, v1, v2};
+ }
+
+inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p) {
+	float e0 = (v0.y - v1.y) * p.x + (v1.x - v0.x) * p.y + (v0.x * v1.y - v1.x * v0.y);
+	float e1 = (v1.y - v2.y) * p.x + (v2.x - v1.x) * p.y + (v1.x * v2.y - v2.x * v1.y);
+	float e2 = (v2.y - v0.y) * p.x + (v0.x - v2.x) * p.y + (v2.x * v0.y - v0.x * v2.y);
+
+	// if edge i is top-left, require e_i >= 0
+	// if not, require e_i > 0
+	// Note: use eps when testing for equality
+	bool e0_tl = (v1.y > v0.y) || ((v1.y == v0.y) && v1.x < v0.x); 
+	bool e1_tl = (v2.y > v1.y) || ((v2.y == v1.y) && v2.x < v1.x); 
+	bool e2_tl = (v0.y > v2.y) || ((v0.y == v2.y) && v0.x < v2.x); 
+	
+	const float eps = std::numeric_limits<float>::epsilon();
+	auto helper = [eps](float e, bool tl) {
+			return (e > eps) || (e >= -eps && tl);
+	};
+
+  return helper(e0, e0_tl) && helper(e1, e1_tl) && helper(e2, e2_tl);
+ }
+
 template<PrimitiveType p, class P, uint32_t flags>
 void Pipeline<p, P, flags>::rasterize_triangle(
 	ClippedVertex const& va, ClippedVertex const& vb, ClippedVertex const& vc,
@@ -476,12 +507,30 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 	if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 		// A1T3: flat triangles
 		// TODO: rasterize triangle (see block comment above this function).
+		Vec2 va_ = va.fb_position.xy();
+		Vec2 vb_ = vb.fb_position.xy();
+		Vec2 vc_ = vc.fb_position.xy();
+		std::vector<Vec2> vccw = get_ccw(va_, vb_, vc_);
 
-		// As a placeholder, here's code that draws some lines:
-		//(remove this and replace it with a real solution)
-		Pipeline<PrimitiveType::Lines, P, flags>::rasterize_line(va, vb, emit_fragment);
-		Pipeline<PrimitiveType::Lines, P, flags>::rasterize_line(vb, vc, emit_fragment);
-		Pipeline<PrimitiveType::Lines, P, flags>::rasterize_line(vc, va, emit_fragment);
+		// bounding box of triangle
+		int xmin = std::floor(std::min({va_.x, vb_.x, vc_.x}));
+		int xmax = std::floor(std::max({va_.x, vb_.x, vc_.x}));
+		int ymin = std::floor(std::min({va_.y, vb_.y, vc_.y}));
+		int ymax = std::floor(std::max({va_.y, vb_.y, vc_.y}));
+
+		for (int i = ymin; i <= ymax; i++) {
+			for (int j = xmin; j <= xmax; j++) {
+				float px = j + 0.5f, py = i + 0.5f;
+				// assert(vccw.size() == 3);
+				if (inside_triangle(vccw.at(0), vccw.at(1), vccw.at(2), Vec2{px, py})) {
+					Fragment frag;
+					frag.fb_position = Vec3{px, py, va.fb_position.z};
+					frag.attributes = va.attributes;
+					frag.derivatives.fill(Vec2(0.0f, 0.0f));
+					emit_fragment(frag);
+				}
+			}
+		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Smooth) {
 		// A1T5: screen-space smooth triangles
 		// TODO: rasterize triangle (see block comment above this function).

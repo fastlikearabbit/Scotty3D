@@ -1,7 +1,9 @@
 // clang-format off
 #include "pipeline.h"
 
+#include <cmath>
 #include <iostream>
+#include <limits>
 
 #include "../lib/log.h"
 #include "../lib/mathlib.h"
@@ -348,6 +350,21 @@ void Pipeline<p, P, flags>::clip_triangle(
  *
  * If you wish to work in fixed point, check framebuffer.h for useful information about the framebuffer's dimensions.
  */
+
+inline bool inside_diamond(float x, float y, float px, float py) {
+	float dist = std::abs(x - px) + std::abs(y - py);
+	float eps = std::numeric_limits<float>::epsilon();
+	if (dist <= 0.5f - eps) {
+		return true;
+	}
+
+	if (dist > 0.5f + eps) {
+		return false;
+	}
+
+	return (x < px) || (y < py);
+ }
+
 template<PrimitiveType p, class P, uint32_t flags>
 void Pipeline<p, P, flags>::rasterize_line(
 	ClippedVertex const& va, ClippedVertex const& vb,
@@ -356,20 +373,66 @@ void Pipeline<p, P, flags>::rasterize_line(
 		assert(0 && "rasterize_line should only be invoked in flat interpolation mode.");
 	}
 	// A1T2: rasterize_line
+	Vec2 a = va.fb_position.xy();
+	a.x = std::floor(std::nextafter(a.x, -std::numeric_limits<float>::infinity()));
+	a.y = std::floor(std::nextafter(a.y, -std::numeric_limits<float>::infinity()));
 
-	// TODO: Check out the block comment above this function for more information on how to fill in
-	// this function!
-	// The OpenGL specification section 3.5 may also come in handy.
+	Vec2 b = vb.fb_position.xy();
 
-	{ // As a placeholder, draw a point in the middle of the line:
-		//(remove this code once you have a real implementation)
-		Fragment mid;
-		mid.fb_position = (va.fb_position + vb.fb_position) / 2.0f;
-		mid.attributes = va.attributes;
-		mid.derivatives.fill(Vec2(0.0f, 0.0f));
-		emit_fragment(mid);
+	float dx = std::abs(a.x - b.x);
+	float dy = std::abs(a.y - b.y);
+
+	int i, j;
+
+	if (dx >= dy) {
+		i = 0;
+		j = 1;
+	} else {
+		i = 1;
+		j = 0;
 	}
 
+	if (a[i] > b[i]) {
+		Vec2 temp = a;
+		a = b;
+		b = temp;
+	}
+
+	float t1 = std::floor(a[i]);
+	float t2 = std::floor(b[i]);
+
+	if (inside_diamond(b.x, b.y, floor(b.x) + 0.5f, floor(b.y) + 0.5f)) {
+		if (dx >= dy && t2 == floor(b.x)) {
+			t2 -= 1;
+		}
+		if (dx < dy && t2 == floor(b.y)) {
+			t2 -= 1;
+		}
+	}
+
+	for (float u = t1; u <= t2; u++) {
+		float w = ((u + 0.5f)- a[i]) / (b[i] - a[i]);
+		if (w < 0 || w >= 1) continue;
+		float v = w * (b[j] - a[j]) + a[j];
+
+		float px, py;
+		
+		if (dx >= dy) {
+			px = std::floor(u) + 0.5f;
+		  py = std::floor(v) + 0.5f;
+		} else {
+			px = std::floor(v) + 0.5f;
+		  py = std::floor(u) + 0.5f;
+		}
+
+		if (dx >= dy && inside_diamond(u + 0.5f, v, px, py) || dx < dy && inside_diamond(v, u + 0.5f, px, py)) {
+			Fragment frag;
+			frag.fb_position = Vec3{px, py, va.fb_position.z};
+			frag.attributes = va.attributes;
+			frag.derivatives.fill(Vec2(0.0f, 0.0f));
+			emit_fragment(frag);
+		}
+	}
 }
 
 /*

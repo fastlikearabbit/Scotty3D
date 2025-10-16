@@ -2,6 +2,7 @@
 #include "pipeline.h"
 
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 #include <limits>
 
@@ -467,17 +468,7 @@ void Pipeline<p, P, flags>::rasterize_line(
  *
  */
 
-inline std::vector<Vec2> get_ccw(Vec2 v0, Vec2 v1, Vec2 v2) {
-	const float eps = std::numeric_limits<float>::epsilon();
-	const float cross = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
-	
-	if (cross < -eps) {
-		return {v0, v2, v1};
-	}
-	return {v0, v1, v2};
- }
-
-inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p) {
+inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p, std::vector<float>* bary=nullptr) {
 	float e0 = (v0.y - v1.y) * p.x + (v1.x - v0.x) * p.y + (v0.x * v1.y - v1.x * v0.y);
 	float e1 = (v1.y - v2.y) * p.x + (v2.x - v1.x) * p.y + (v1.x * v2.y - v2.x * v1.y);
 	float e2 = (v2.y - v0.y) * p.x + (v0.x - v2.x) * p.y + (v2.x * v0.y - v0.x * v2.y);
@@ -494,6 +485,16 @@ inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p) {
 			return (e > eps) || (e >= -eps && tl);
 	};
 
+	// compute barycentric coordinates
+	float twice_total_area = (v1.x - v0.x)*(v2.y - v0.y) - (v1.y - v0.y)*(v2.x - v0.x);
+	float w0 = e1 / twice_total_area;  // opposite v0
+	float w1 = e2 / twice_total_area;  // opposite v1
+	float w2 = e0 / twice_total_area;  // opposite v2
+
+  if (bary != nullptr) {
+		bary->insert(bary->end(), {w0, w1, w2});
+	}
+
   return helper(e0, e0_tl) && helper(e1, e1_tl) && helper(e2, e2_tl);
  }
 
@@ -505,27 +506,48 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 	//  same code paths. Be aware, however, that all of them need to remain working!
 	//  (e.g., if you break Flat while implementing Correct, you won't get points
 	//   for Flat.)
+
+	// CCW order
+	ClippedVertex v0 = va, v1, v2;
+	const float eps = std::numeric_limits<float>::epsilon();
+	const float cross = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y)
+											- (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
+	
+	if (cross < -eps) {
+		// swap vb and vc
+		v1 = vc;
+		v2 = vb;
+	} else {
+		v1 = vb;
+		v2 = vc;
+	}
+
+	Vec2 va_ = v0.fb_position.xy();
+	Vec2 vb_ = v1.fb_position.xy();
+	Vec2 vc_ = v2.fb_position.xy();
+
+	// bounding box of triangle
+	int xmin = std::floor(std::min({va_.x, vb_.x, vc_.x}));
+	int xmax = std::floor(std::max({va_.x, vb_.x, vc_.x}));
+	int ymin = std::floor(std::min({va_.y, vb_.y, vc_.y}));
+	int ymax = std::floor(std::max({va_.y, vb_.y, vc_.y}));
+
+
+	auto linear_interp = [](std::vector<float> bary, std::vector<float> attr) {
+		return bary.at(0) * attr.at(0) + bary.at(1) * attr.at(1) + bary.at(2) * attr.at(2); 
+	};
+
 	if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 		// A1T3: flat triangles
 		// TODO: rasterize triangle (see block comment above this function).
-		Vec2 va_ = va.fb_position.xy();
-		Vec2 vb_ = vb.fb_position.xy();
-		Vec2 vc_ = vc.fb_position.xy();
-		std::vector<Vec2> vccw = get_ccw(va_, vb_, vc_);
-
-		// bounding box of triangle
-		int xmin = std::floor(std::min({va_.x, vb_.x, vc_.x}));
-		int xmax = std::floor(std::max({va_.x, vb_.x, vc_.x}));
-		int ymin = std::floor(std::min({va_.y, vb_.y, vc_.y}));
-		int ymax = std::floor(std::max({va_.y, vb_.y, vc_.y}));
-
 		for (int i = ymin; i <= ymax; i++) {
 			for (int j = xmin; j <= xmax; j++) {
 				float px = j + 0.5f, py = i + 0.5f;
-				// assert(vccw.size() == 3);
-				if (inside_triangle(vccw.at(0), vccw.at(1), vccw.at(2), Vec2{px, py})) {
+
+				std::vector<float> bary_coords{};
+				if (inside_triangle(va_, vb_, vc_, Vec2{px, py}, &bary_coords)) {
 					Fragment frag;
-					frag.fb_position = Vec3{px, py, va.fb_position.z};
+					frag.fb_position =Vec3{px, py, linear_interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
 					frag.attributes = va.attributes;
 					frag.derivatives.fill(Vec2(0.0f, 0.0f));
 					emit_fragment(frag);
@@ -536,15 +558,54 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		// A1T5: screen-space smooth triangles
 		// TODO: rasterize triangle (see block comment above this function).
 
+		// for (int i = ymin; i <= ymax; i++) {
+		// 	for (int j = xmin; j <= xmax; j++) {
+		// 		float px = j + 0.5f, py = i + 0.5f;
+		// 		std::vector<float> bary_coords{};
+		// 		if (inside_triangle(va_, vb_, vc_, Vec2{px, py}, &bary_coords)) {
+		// 			Fragment frag;
+		// 			frag.fb_position = Vec3{px, py, linear_interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
+
+		// 			// MODIFY 
+		// 			for (int i = 0; i < va.attributes.size(); i++) {
+		// 				frag.attributes[i] = linear_interp(bary_coords, {va.attributes[i], vb.attributes[i], vc.attributes[i]});
+		// 			}
+		// 			frag.derivatives.fill(Vec2(0.0f, 0.0f));
+
+		// 			emit_fragment(frag);
+		// 		}
+		// 	}
+		// }
 		// As a placeholder, here's code that calls the Flat interpolation version of the function:
 		//(remove this and replace it with a real solution)
-		Pipeline<PrimitiveType::Lines, P, (flags & ~PipelineMask_Interp) | Pipeline_Interp_Flat>::rasterize_triangle(va, vb, vc, emit_fragment);
+
+		// REMOVE THIS AT THE END
+		// Pipeline<PrimitiveType::Lines, P, (flags & ~PipelineMask_Interp) | Pipeline_Interp_Flat>::rasterize_triangle(va, vb, vc, emit_fragment);
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
 		// A1T5: perspective correct triangles
 		// TODO: rasterize triangle (block comment above this function).
 
+		// for (int i = ymin; i <= ymax; i++) {
+		// 	for (int j = xmin; j <= xmax; j++) {
+		// 		float px = j + 0.5f, py = i + 0.5f;
+		// 		std::vector<float> bary_coords{};
+		// 		if (inside_triangle(vccw.at(0), vccw.at(1), vccw.at(2), Vec2{px, py}, &bary_coords)) {
+		// 			Fragment frag;
+		// 			frag.fb_position = Vec3{px, py, va.fb_position.z};
+
+		// 			// MODIFY 
+
+		// 			float invw_interp = vccw
+		// 			frag.attributes = va.attributes;
+		// 			frag.derivatives.fill(Vec2(0.0f, 0.0f));
+
+		// 			emit_fragment(frag);
+		// 		}
+		// 	}
 		// As a placeholder, here's code that calls the Screen-space interpolation function:
 		//(remove this and replace it with a real solution)
+
+		// REMOVE THIS AT THE END
 		Pipeline<PrimitiveType::Lines, P, (flags & ~PipelineMask_Interp) | Pipeline_Interp_Smooth>::rasterize_triangle(va, vb, vc, emit_fragment);
 	}
 }

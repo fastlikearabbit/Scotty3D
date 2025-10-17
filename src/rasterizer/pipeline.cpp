@@ -146,6 +146,7 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 			// A1T4: Depth_Less
 			// TODO: implement depth test! We want to only emit fragments that have a depth less than the stored depth, hence "Depth_Less".
 			if (f.fb_position.z >= fb_depth) continue;
+			fb_depth = f.fb_position.z;
 		} else {
 			static_assert((flags & PipelineMask_Depth) <= Pipeline_Depth_Always, "Unknown depth test flag.");
 		}

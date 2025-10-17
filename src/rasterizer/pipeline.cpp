@@ -567,16 +567,6 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		return Vec2{dx, dy};
 	};
 
-	auto interp_persp_depth = [&](const std::vector<float>& bc) -> float {
-    float z0 = va.fb_position.z, z1 = vb.fb_position.z, z2 = vc.fb_position.z;
-    float iw0 = va.inv_w,        iw1 = vb.inv_w,        iw2 = vc.inv_w;
-
-    float num = bc[0] * (z0 / iw0) + bc[1] * (z1 / iw1) + bc[2] * (z2 / iw2);
-    float den = bc[0] * (1.0f/iw0) + bc[1] * (1.0f/iw1) + bc[2] * (1.0f/iw2);
-    return num / den;
-	};
-
-
 	if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 		// A1T3: flat triangles
 		for (int i = ymin; i <= ymax; i++) {
@@ -586,7 +576,8 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 				std::vector<float> bary_coords{};
 				if (inside_triangle(va_, vb_, vc_, Vec2{px, py} + sample_offset, &bary_coords)) {
 					Fragment frag;
-					frag.fb_position = Vec3{px, py, interp_persp_depth(bary_coords)};
+					float z0 = va.fb_position.z, z1 = vb.fb_position.z, z2 = vc.fb_position.z;
+					frag.fb_position = Vec3{px, py, interp(bary_coords, {z0, z1, z2})};
 					frag.attributes = va.attributes;
 					frag.derivatives.fill(Vec2(0.0f, 0.0f));
 					emit_fragment(frag);
@@ -602,8 +593,8 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 				float darea;
 				if (inside_triangle(va_, vb_, vc_, Vec2{px, py} + sample_offset, &bary_coords, &darea)) {
 					Fragment frag;
-					frag.fb_position = Vec3{px, py, interp_persp_depth(bary_coords)};
-
+					float z0 = va.fb_position.z, z1 = vb.fb_position.z, z2 = vc.fb_position.z;
+					frag.fb_position = Vec3{px, py, interp(bary_coords, {z0, z1, z2})};
 					//  *    derivatives[i].x = d/d(px) attributes[i]
  					//  *    derivatives[i].y = d/d(py) attributes[i]
 					int n = std::min({va.attributes.size(),
@@ -630,7 +621,8 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 				float darea;
 				if (inside_triangle(va_, vb_, vc_, Vec2{px, py} + sample_offset, &bary_coords, &darea)) {
 					Fragment frag;
-					frag.fb_position = Vec3{px, py, interp_persp_depth(bary_coords)};
+					float z0 = va.fb_position.z, z1 = vb.fb_position.z, z2 = vc.fb_position.z;
+					frag.fb_position = Vec3{px, py, interp(bary_coords, {z0, z1, z2})};
 
 					//  *    derivatives[i].x = d/d(px) attributes[i]
  					//  *    derivatives[i].y = d/d(py) attributes[i]

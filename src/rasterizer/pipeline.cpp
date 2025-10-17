@@ -468,7 +468,7 @@ void Pipeline<p, P, flags>::rasterize_line(
  *
  */
 
-inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p, std::vector<float>* bary=nullptr) {
+inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p, std::vector<float>* bary=nullptr, float *darea=nullptr) {
 	float e0 = (v0.y - v1.y) * p.x + (v1.x - v0.x) * p.y + (v0.x * v1.y - v1.x * v0.y);
 	float e1 = (v1.y - v2.y) * p.x + (v2.x - v1.x) * p.y + (v1.x * v2.y - v2.x * v1.y);
 	float e2 = (v2.y - v0.y) * p.x + (v0.x - v2.x) * p.y + (v2.x * v0.y - v0.x * v2.y);
@@ -487,12 +487,19 @@ inline bool inside_triangle(Vec2 v0, Vec2 v1, Vec2 v2, Vec2 p, std::vector<float
 
 	// compute barycentric coordinates
 	float twice_total_area = (v1.x - v0.x)*(v2.y - v0.y) - (v1.y - v0.y)*(v2.x - v0.x);
+	if (darea != nullptr) *darea = twice_total_area;
+
+	if (std::abs(twice_total_area) <= std::numeric_limits<float>::epsilon()) {
+    if (bary) bary->assign({0.f, 0.f, 0.f});
+    return false;
+	}
+
 	float w0 = e1 / twice_total_area;  // opposite v0
 	float w1 = e2 / twice_total_area;  // opposite v1
 	float w2 = e0 / twice_total_area;  // opposite v2
 
   if (bary != nullptr) {
-		bary->insert(bary->end(), {w0, w1, w2});
+		bary->assign({w0, w1, w2});
 	}
 
   return helper(e0, e0_tl) && helper(e1, e1_tl) && helper(e2, e2_tl);
@@ -533,9 +540,21 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 	int ymax = std::floor(std::max({va_.y, vb_.y, vc_.y}));
 
 
-	auto linear_interp = [](std::vector<float> bary, std::vector<float> attr) {
+	auto interp = [](const std::vector<float>& bary, const std::vector<float>& attr) {
 		return bary.at(0) * attr.at(0) + bary.at(1) * attr.at(1) + bary.at(2) * attr.at(2); 
 	};
+
+	auto deriv = [](const std::vector<Vec2>& v, const std::vector<float>& a, float darea) {
+		const float inv = 1.0f / darea;
+		float dx = inv * ((v[1].y - v[2].y) * a[0]
+												+ (v[2].y - v[0].y) * a[1]
+												+ (v[0].y - v[1].y) * a[2]);
+		float dy = inv * ((v[2].x - v[1].x) * a[0]
+												+ (v[0].x - v[2].x) * a[1]
+												+ (v[1].x - v[0].x) * a[2]);
+		return Vec2{dx, dy};
+	};
+
 
 	if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 		// A1T3: flat triangles
@@ -547,7 +566,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 				std::vector<float> bary_coords{};
 				if (inside_triangle(va_, vb_, vc_, Vec2{px, py}, &bary_coords)) {
 					Fragment frag;
-					frag.fb_position =Vec3{px, py, linear_interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
+					frag.fb_position =Vec3{px, py, interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
 					frag.attributes = va.attributes;
 					frag.derivatives.fill(Vec2(0.0f, 0.0f));
 					emit_fragment(frag);
@@ -556,57 +575,72 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Smooth) {
 		// A1T5: screen-space smooth triangles
-		// TODO: rasterize triangle (see block comment above this function).
 
-		// for (int i = ymin; i <= ymax; i++) {
-		// 	for (int j = xmin; j <= xmax; j++) {
-		// 		float px = j + 0.5f, py = i + 0.5f;
-		// 		std::vector<float> bary_coords{};
-		// 		if (inside_triangle(va_, vb_, vc_, Vec2{px, py}, &bary_coords)) {
-		// 			Fragment frag;
-		// 			frag.fb_position = Vec3{px, py, linear_interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
+		for (int i = ymin; i <= ymax; i++) {
+			for (int j = xmin; j <= xmax; j++) {
+				float px = j + 0.5f, py = i + 0.5f;
+				std::vector<float> bary_coords{};
+				float darea;
+				if (inside_triangle(va_, vb_, vc_, Vec2{px, py}, &bary_coords, &darea)) {
+					Fragment frag;
+					frag.fb_position = Vec3{px, py, interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
 
-		// 			// MODIFY 
-		// 			for (int i = 0; i < va.attributes.size(); i++) {
-		// 				frag.attributes[i] = linear_interp(bary_coords, {va.attributes[i], vb.attributes[i], vc.attributes[i]});
-		// 			}
-		// 			frag.derivatives.fill(Vec2(0.0f, 0.0f));
+					//  *    derivatives[i].x = d/d(px) attributes[i]
+ 					//  *    derivatives[i].y = d/d(py) attributes[i]
+					int n = std::min({va.attributes.size(),
+                            vb.attributes.size(),
+                            vc.attributes.size(),
+                            frag.attributes.size()});
+					for (int k = 0; k < n; k++) {
+						float a0 = va.attributes[k], a1 = vb.attributes[k], a2 = vc.attributes[k];
+						frag.attributes[k] = interp(bary_coords, {a0, a1, a2});
+						frag.derivatives[k] = deriv({va_, vb_, vc_}, {a0, a1, a2}, darea);
+					}
 
-		// 			emit_fragment(frag);
-		// 		}
-		// 	}
-		// }
-		// As a placeholder, here's code that calls the Flat interpolation version of the function:
-		//(remove this and replace it with a real solution)
-
-		// REMOVE THIS AT THE END
-		// Pipeline<PrimitiveType::Lines, P, (flags & ~PipelineMask_Interp) | Pipeline_Interp_Flat>::rasterize_triangle(va, vb, vc, emit_fragment);
+					emit_fragment(frag);
+				}
+			}
+		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
 		// A1T5: perspective correct triangles
-		// TODO: rasterize triangle (block comment above this function).
 
-		// for (int i = ymin; i <= ymax; i++) {
-		// 	for (int j = xmin; j <= xmax; j++) {
-		// 		float px = j + 0.5f, py = i + 0.5f;
-		// 		std::vector<float> bary_coords{};
-		// 		if (inside_triangle(vccw.at(0), vccw.at(1), vccw.at(2), Vec2{px, py}, &bary_coords)) {
-		// 			Fragment frag;
-		// 			frag.fb_position = Vec3{px, py, va.fb_position.z};
+		for (int i = ymin; i <= ymax; i++) {
+			for (int j = xmin; j <= xmax; j++) {
+				float px = j + 0.5f, py = i + 0.5f;
+				std::vector<float> bary_coords{};
+				float darea;
+				if (inside_triangle(va_, vb_, vc_, Vec2{px, py}, &bary_coords, &darea)) {
+					Fragment frag;
+					frag.fb_position = Vec3{px, py, interp(bary_coords, {va.fb_position.z, vb.fb_position.z, vc.fb_position.z})};
 
-		// 			// MODIFY 
+					//  *    derivatives[i].x = d/d(px) attributes[i]
+ 					//  *    derivatives[i].y = d/d(py) attributes[i]
+					int n = std::min({va.attributes.size(),
+									vb.attributes.size(),
+									vc.attributes.size(),
+									frag.attributes.size()});
+					for (int k = 0; k < n; k++) {
+						float a0 = va.attributes[k], a1 = vb.attributes[k], a2 = vc.attributes[k];
+					  float inv_w0 = va.inv_w, inv_w1 = vb.inv_w, inv_w2 = vc.inv_w;
+						float interp_phi = interp(bary_coords, {a0 * inv_w0, a1 * inv_w1, a2 * inv_w2});
+						float interp_invw = interp(bary_coords, {inv_w0, inv_w1, inv_w2});
 
-		// 			float invw_interp = vccw
-		// 			frag.attributes = va.attributes;
-		// 			frag.derivatives.fill(Vec2(0.0f, 0.0f));
+						frag.attributes[k] = interp_phi / interp_invw;
 
-		// 			emit_fragment(frag);
-		// 		}
-		// 	}
-		// As a placeholder, here's code that calls the Screen-space interpolation function:
-		//(remove this and replace it with a real solution)
+						Vec2 dinterp_phi = deriv({va_, vb_, vc_}, {a0 * inv_w0, a1 * inv_w1, a2 * inv_w2}, darea);
+						Vec2 dinterp_invw = deriv({va_, vb_, vc_}, {inv_w0, inv_w1, inv_w2}, darea);
 
-		// REMOVE THIS AT THE END
-		Pipeline<PrimitiveType::Lines, P, (flags & ~PipelineMask_Interp) | Pipeline_Interp_Smooth>::rasterize_triangle(va, vb, vc, emit_fragment);
+						float dx = (dinterp_phi.x * interp_invw - dinterp_invw.x * interp_phi) / (interp_invw * interp_invw);
+						float dy = (dinterp_phi.y * interp_invw - dinterp_invw.y * interp_phi) / (interp_invw * interp_invw);
+
+						frag.derivatives[k] = Vec2{dx, dy};
+						
+					}
+
+					emit_fragment(frag);
+				}
+			}
+		}
 	}
 }
 

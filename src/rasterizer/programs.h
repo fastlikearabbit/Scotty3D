@@ -7,6 +7,7 @@
 
 #include "../lib/mathlib.h"
 #include "../scene/texture.h"
+#include <cmath>
 
 namespace Programs {
 
@@ -123,7 +124,15 @@ struct Lambertian {
 		// reading onward, you will discover that \rho can be computed in a number of ways
 		//  it is up to you to select one that makes sense in this context
 
-		float lod = 0.0f; //<-- replace this line
+		Vec2 fdx_pixel(fdx_texcoord.x * wh.x, fdx_texcoord.y * wh.y);
+		Vec2 fdy_pixel(fdy_texcoord.x * wh.x, fdy_texcoord.y * wh.y);
+		float Lsquared = std::max(fdx_pixel.norm_squared(), fdy_pixel.norm_squared());
+		float lod;
+		if (Lsquared > 0) {
+			lod = 0.5f * std::log2f(Lsquared);
+		} else {
+			lod = -1;
+		}
 		//-----
 
 		Vec3 normal = fa_normal.unit();

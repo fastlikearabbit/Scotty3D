@@ -351,9 +351,9 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
 	HalfedgeRef tn = t->next;
 
 	HalfedgeRef hp = h->next;
-	do { hp = hp->next; } while (hp->next != h);
+	while (hp->next != h) { hp = hp->next; }
 	HalfedgeRef tp = t->next;
-	do { tp = tp->next; } while (tp->next != t);
+	while (tp->next != t) { tp = tp->next; }
 
 	// connect
 	v1->halfedge = hn;

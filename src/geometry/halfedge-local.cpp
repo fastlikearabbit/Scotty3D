@@ -371,11 +371,9 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
 
 	h->face = f1;
 	hn->face = f2;
-	hp->face = f1;
 
 	t->face = f2;
 	tn->face = f1;
-	tp->face = f2;
 
 	f1->halfedge = h;
 	f2->halfedge = t;

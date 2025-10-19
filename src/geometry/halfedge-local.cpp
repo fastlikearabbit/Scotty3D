@@ -1,6 +1,7 @@
 
 #include "halfedge.h"
 
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
@@ -222,10 +223,96 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::bisect_edge(EdgeRef e) {
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
 	// A2L2 (REQUIRED): split_edge
 
-	// IDEA: use the bisect_edge functionality here
-	
-	(void)e; //this line avoids 'unused parameter' warnings. You can delete it as you fill in the function.
-    return std::nullopt;
+	std::optional<VertexRef> vopt = bisect_edge(e);
+	if (vopt == std::nullopt) {
+		return vopt;
+	}
+
+	VertexRef v = vopt.value();
+
+	HalfedgeRef h1 = v->halfedge;
+	HalfedgeRef t1 = h1->twin;
+	HalfedgeRef h2 = t1->next->twin;
+	HalfedgeRef t2 = t1->next;
+	HalfedgeRef hp = t2->next->twin;
+	HalfedgeRef tn = hp->twin;
+	HalfedgeRef hn = h1->next;
+	HalfedgeRef tp = hn->twin;
+
+	VertexRef v1 = t1->vertex;
+	VertexRef v2 = h2->vertex;
+	VertexRef v3 = tp->vertex;
+	VertexRef v4 = hp->vertex;
+
+	FaceRef f1 = t1->face;
+	FaceRef f2 = h1->face;
+
+	if (f1->boundary && f2->boundary) {
+		return std::nullopt;
+	}
+
+	if (!f1->boundary) {
+		// std::cout << "\nHERE\n";
+		FaceRef f3 = emplace_face();
+		EdgeRef el = emplace_edge();
+		HalfedgeRef hl = emplace_halfedge();
+		HalfedgeRef tl = emplace_halfedge();
+
+		f3->halfedge = hl;
+		el->halfedge = hl;
+
+		hl->vertex = v4;
+		hl->twin = tl;
+		hl->edge = el;
+		hl->face = f3;
+		hl->next = t2;
+
+		tl->vertex = v;
+		tl->twin = hl;
+		tl->edge = el;
+		tl->face = f1;
+		tl->next = tn->next;
+
+		t2->face = f3;
+		tn->face = f3;
+		t1->next = tl;
+		tn->next = hl;
+
+		f1->halfedge = t1;
+	}	
+
+	if (!f2->boundary) {
+		// std::cout << "here\n";
+		FaceRef f4 = emplace_face();
+		EdgeRef er = emplace_edge();
+		HalfedgeRef hr = emplace_halfedge();
+		HalfedgeRef tr = emplace_halfedge();
+
+		f4->halfedge = tr;
+		er->halfedge = tr;
+
+		hr->vertex = v;
+		hr->twin = tr;
+		hr->edge = er;
+		hr->face = f2;
+		hr->next = hn->next;
+
+		tr->vertex = v3;
+		tr->twin = hr;
+		tr->edge = er;
+		tr->face = f4;
+		tr->next = h1;
+
+		h1->face = f4;
+		hn->face = f4;
+		h2->next = hr;
+		hn->next = tr;
+
+		f2->halfedge = h2;
+	}
+
+	std::cout << describe() << std::endl;
+  return v;
 }
 
 

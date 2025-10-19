@@ -221,6 +221,8 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::bisect_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
 	// A2L2 (REQUIRED): split_edge
+
+	// IDEA: use the bisect_edge functionality here
 	
 	(void)e; //this line avoids 'unused parameter' warnings. You can delete it as you fill in the function.
     return std::nullopt;
@@ -331,8 +333,56 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::extrude_face(FaceRef f) {
  */
 std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
 	//A2L1: Flip Edge
+
+	// collect
+	HalfedgeRef h = e->halfedge;
+	HalfedgeRef t = h->twin;
+	// edge case: when either vertices incident to the edge has degree <= 2, reject
+	VertexRef v1 = h->next->vertex, v2 = t->next->vertex;
+  if (e->on_boundary() || v1->degree() <= 2 || v2->degree() <= 2) {
+		return std::nullopt;
+	}
+
+	VertexRef v3 = h->next->next->vertex;
+	VertexRef v4 = t->next->next->vertex;
+	FaceRef f1 = h->face;
+	FaceRef f2 = t->face;
+	HalfedgeRef hn = h->next;
+	HalfedgeRef tn = t->next;
+
+	HalfedgeRef hp = h->next;
+	do { hp = hp->next; } while (hp->next != h);
+	HalfedgeRef tp = t->next;
+	do { tp = tp->next; } while (tp->next != t);
+
+	// connect
+	v1->halfedge = hn;
+	v2->halfedge = tn;
 	
-    return std::nullopt;
+	t->vertex = v3;
+	h->vertex = v4;
+
+	h->next = hn->next;
+	t->next = tn->next;
+	tp->next = hn;
+	hp->next = tn;
+	hn->next = t;
+	tn->next = h;
+
+	h->face = f1;
+	hn->face = f2;
+	hp->face = f1;
+
+	t->face = f2;
+	tn->face = f1;
+	tp->face = f2;
+
+	f1->halfedge = h;
+	f2->halfedge = t;
+
+	std::cout << describe() << std::endl;
+	
+	return e;
 }
 
 

@@ -397,14 +397,82 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_edge(EdgeRef e) {
  * returns: reference to the inner face
  *
  * see also [BEVEL NOTE] above.
- */
+*/
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::extrude_face(FaceRef f) {
-	//A2L4: Extrude Face
-	// Reminder: This function does not update the vertex positions.
-	// Remember to also fill in extrude_helper (A2L4h)
+	int n = f->degree();
 
-	(void)f;
-    return std::nullopt;
+	std::vector<HalfedgeRef> oh; 
+	std::vector<HalfedgeRef> ot; 
+	std::vector<VertexRef>   ov; 
+	std::vector<EdgeRef>     oe; 
+
+	HalfedgeRef h = f->halfedge, c = h;
+	do {
+		oh.push_back(c);
+		ot.push_back(c->twin);
+		ov.push_back(c->vertex);
+		oe.push_back(c->edge);
+		c = c->next;
+	} while (c != h);
+
+	std::vector<VertexRef>   bv(n);
+	std::vector<FaceRef>     fin(n);
+	std::vector<EdgeRef>     ec(n), be(n);
+	std::vector<HalfedgeRef> ch(n), ct(n), bt(n), bh(n);
+
+	for (size_t i = 0; i < n; i++) {
+		bv[i] = emplace_vertex(); 
+		bv[i]->position = ov[i]->position;
+		fin[i] = emplace_face();
+		ec[i] = emplace_edge();
+		be[i] = emplace_edge();
+		bh[i] = emplace_halfedge();
+		bt[i] = emplace_halfedge();
+		ch[i] = emplace_halfedge();
+		ct[i] = emplace_halfedge();
+	}
+
+	for (int i = 0; i < n; i++) {
+		int ni = (i + 1) % n;
+		int pi = (i - 1 + n) % n;
+
+		ch[i]->vertex = ov[ni];
+		ch[i]->edge = ec[i];
+		ch[i]->twin = ct[i];
+		ch[i]->next = bt[i];
+		ch[i]->face = fin[i];
+
+		ct[i]->vertex = bv[ni];
+		ct[i]->edge = ec[i];
+		ct[i]->twin = ch[i];
+		ct[i]->next = oh[ni];
+		ct[i]->face = fin[ni];
+
+		bh[i]->vertex = bv[i];
+		bh[i]->edge = be[i];
+		bh[i]->twin = bt[i];
+		bh[i]->next = bh[ni];
+		bh[i]->face = f;
+
+		bt[i]->vertex = bv[ni];
+		bt[i]->edge = be[i];
+		bt[i]->twin = bh[i];
+		bt[i]->next = ct[pi];
+		bt[i]->face = fin[i];
+
+		ec[i]->halfedge = ch[i];
+		be[i]->halfedge = bt[i];
+		fin[i]->halfedge = ch[i];
+		bv[i]->halfedge = bh[i];
+
+		oh[i]->next = ch[i];
+		oh[i]->face = fin[i];
+	}
+
+	f->halfedge = bh[0];
+
+	std::cout << describe() << std::endl;
+	return f;
 }
 
 /*
@@ -591,13 +659,18 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 
 	FaceRef f1 = h->face;
 	FaceRef f2 = h->twin->face;
-
-	// collapse a triangle in f1
+	
+	// don't worry about non-triangular faces for now
+	if (f1->degree() != 3 || f2->degree() != 3) {
+		return std::nullopt;
+	}
+	
+	// collapse enclosing cycle in which e->halfedge sits
 	if (!f1->boundary) {
 
 	}
 
-	// collapse a triangle in f2
+	// collapse enclosing cycle in which e->halfedge sits (or e->halfedge->twin if the above part was also executed)
 	if (!f2->boundary) {
 
 	}
@@ -694,5 +767,16 @@ void Halfedge_Mesh::extrude_positions(FaceRef face, Vec3 move, float shrink) {
 	// compute the centroid from these positions + use to shrink,
 	// offset by move
 	
+	HalfedgeRef h = face->halfedge;
+	Vec3 centroid = face->center();
+
+	HalfedgeRef h_current = h;
+	do {
+		VertexRef v = h_current->vertex;
+		Vec3 op = v->position;
+		v->position = op + shrink * (centroid - op) + move;
+		
+		h_current = h_current->next;
+	} while (h_current != h);
 }
 

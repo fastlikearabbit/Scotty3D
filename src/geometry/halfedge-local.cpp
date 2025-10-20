@@ -524,11 +524,85 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) {
 	//A2L3: Collapse Edge
-
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data on halfedges
 	// (also works for bone_weights data on vertices!)
-	
-    return std::nullopt;
+
+	HalfedgeRef h = e->halfedge;
+	VertexRef v1 = h->vertex;
+	VertexRef v2 = h->twin->vertex;
+
+	// refer to: https://hhoppe.com/meshopt.pdf
+
+	// 1. for any v3 adjacent to both v1 and v2, {v1, v2, v3} must form a face
+	std::unordered_set<VertexRef> v1_neighbours{};
+	HalfedgeRef h_temp = v1->halfedge;
+	do {
+		v1_neighbours.insert(h_temp->twin->vertex);
+		h_temp = h_temp->twin->next;
+	} while (h_temp != v1->halfedge);
+
+	h_temp = v2->halfedge;
+	do {
+		VertexRef v3 = h_temp->twin->vertex;
+		if (v1_neighbours.find(v3) != v1_neighbours.end()) {
+			// check if {v1, v2, v3} form a face
+			bool forms_face = false;
+			HalfedgeRef h_v3 = v3->halfedge;
+			do {
+				FaceRef f = h_v3->face;
+				if (!f->boundary) {
+					HalfedgeRef h_face = f->halfedge;
+					std::unordered_set<VertexRef> face_vertices;
+					do {
+						face_vertices.insert(h_face->vertex);
+						h_face = h_face->next;
+					} while (h_face != f->halfedge);
+					
+					if (face_vertices.count(v1) && face_vertices.count(v2) && face_vertices.count(v3)) {
+						forms_face = true;
+						break;
+					}
+				}
+				h_v3 = h_v3->twin->next;
+			} while (h_v3 != v3->halfedge);
+			
+			if (!forms_face) {
+					return std::nullopt;
+			}
+		}
+		h_temp = h_temp->twin->next;
+	} while (h_temp != v2->halfedge);
+
+	// 2. if v1 and v2 are boundary vertices, so must v1--v2 be
+	if (v1->on_boundary() && v2->on_boundary() && !e->on_boundary()) {
+		return std::nullopt;
+	}
+
+	// 3. If v1 and v2 are non-boundary, require #vertices >= 4; If either of them is, require #vertices >= 3
+	size_t vcnt = this->vertices.size();
+	if (!v1->on_boundary() && !v2->on_boundary() && vcnt <= 3
+			|| (v1->on_boundary() || v2->on_boundary()) && vcnt <= 2) {
+		return std::nullopt;
+	}
+		
+
+	/* -------- FROM NOW ON ASSUME EDGE COLLAPSING IS POSSIBLE ---------- */
+
+
+	FaceRef f1 = h->face;
+	FaceRef f2 = h->twin->face;
+
+	// collapse a triangle in f1
+	if (!f1->boundary) {
+
+	}
+
+	// collapse a triangle in f2
+	if (!f2->boundary) {
+
+	}
+
+  return std::nullopt;
 }
 
 /*

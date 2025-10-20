@@ -112,6 +112,51 @@ Test test_a2_l3_collapse_edge_edge_boundary("a2.l3.collapse_edge.edge.boundary",
 });
 
 /*
+EDGE CASE
+
+Initial mesh:
+0--1\
+|\ | \
+| \2--3
+|  | /
+4--5/
+
+Collapse Edge on Edge: 1--3
+
+After mesh:
+0--1
+|\ |
+| \2
+|  |
+3--4
+*/
+Test test_a2_l3_collapse_edge_edge_boundary_2("a2.l3.collapse_edge.edge.boundary.2", []() {
+	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
+		Vec3(-1.0f, 1.1f, 0.0f), Vec3(1.1f, 1.0f, 0.0f),
+		                         Vec3(1.2f, 0.0f, 0.0f),  Vec3(2.3f, 0.0f, 0.0f),
+		Vec3(-1.4f,-0.7f, 0.0f), Vec3(1.5f, -1.0f, 0.0f)
+	}, {
+		{1, 2, 3}, 
+		{0, 2, 1}, 
+		{0, 4, 5, 2}, 
+		{2, 5, 3}
+	});
+
+	Halfedge_Mesh::EdgeRef edge = mesh.halfedges.begin()->next->next->edge;
+
+	Halfedge_Mesh after = Halfedge_Mesh::from_indexed_faces({
+		Vec3(-1.0f, 1.1f, 0.0f), Vec3(1.1f, 1.0f, 0.0f),
+		                         Vec3(1.2f, 0.0f, 0.0f),
+		Vec3(-1.4f,-0.7f, 0.0f), Vec3(1.5f, -1.0f, 0.0f)
+	}, {
+		{0, 2, 1}, 
+		{0, 3, 4, 2}
+	});
+
+	expect_collapse(mesh, edge, after);
+});
+
+/*
 EDGE CASE EASY
 
 Initial mesh:
@@ -136,7 +181,7 @@ Resulting mesh:
 REJECT!
 */
 
-Test test_a2_l3_collapse_edge_edge_case_easy("a2.l2.collapse_edge.edge.case.easy", []() {
+Test test_a2_l3_collapse_edge_edge_case_easy("a2.l3.collapse_edge.edge.case.easy", []() {
 	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
 		             Vec3(-1.0f, 1.1f, 0.0f),
 		Vec3(-2.1f, 0.3f, 0.0f),
@@ -177,7 +222,7 @@ Correct result:
 |   |   |
 6---7---8
 */
-Test test_a2_l1_collapse_edge_hard_1("a2.l2.collapse_edge.hard.1", []() {
+Test test_a2_l3_collapse_edge_hard_1("a2.l3.collapse_edge.hard.1", []() {
 	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
 	Vec3(-1.0f, 1.1f, 0.0f), Vec3(0.5f, 1.0f, 0.0f), Vec3(1.1f, 0.9f, 0.0f),
 													 Vec3(0.6f, 0.4f, 0.0f),
@@ -204,7 +249,7 @@ Test test_a2_l1_collapse_edge_hard_1("a2.l2.collapse_edge.hard.1", []() {
 		{0, 4, 3, 1},
 		{1, 3, 5, 2},
 		{4, 6, 7, 3},
-		{4, 7, 8, 5}
+		{3, 7, 8, 5}
 	});
 	expect_collapse(mesh, edge, after);
 });
@@ -237,13 +282,13 @@ Mesh:
 REJECT!
 */
 
-Test test_a2_l3_collapse_edge_edge_case_hard_2("a2.l2.collapse_edge.edge.case.hard.2", []() {
+Test test_a2_l3_collapse_edge_edge_case_hard_2("a2.l3.collapse_edge.edge.case.hard.2", []() {
 	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
-	Vec3(-1.0f, 1.1f, 0.0f), Vec3(0.5f, 1.0f, 0.0f), Vec3(1.1f, 0.9f, 0.0f),
+	Vec3(-1.0f, 1.1f, 0.0f), Vec3(0.5f, 1.0f, 0.0f), Vec3(1.1f, 1.0f, 0.0f),
 	Vec3(-1.5f,-0.7f, 0.0f), Vec3(0.1f, -0.8f, 0.0f), Vec3(1.4f, -1.0f, 0.0f)
 	}, {
 		{0, 3, 4, 1},
-		{1, 3, 5, 2}
+		{1, 4, 5, 2}
 	});
 
 	Halfedge_Mesh::EdgeRef edge = mesh.halfedges.begin()->next->next->edge;

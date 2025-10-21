@@ -3,17 +3,113 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include <iostream>
-
-
 /*
  * triangulate: split all non-boundary faces into triangles.
  *
  * Works on all valid meshes.
  */
 void Halfedge_Mesh::triangulate() {
-	//A2G1: triangulation
-	
+  std::vector<FaceRef> faces_to_triangulate;
+
+  for (FaceRef f = faces.begin(); f != faces.end(); f++) {
+    if (f->boundary || f->degree() == 3) continue;
+    faces_to_triangulate.push_back(f);
+  }
+
+  for (FaceRef f : faces_to_triangulate) {
+    std::vector<HalfedgeRef> ring;
+    std::vector<VertexRef> verts;
+
+    HalfedgeRef h0 = f->halfedge;
+    HalfedgeRef h = h0;
+
+    do {
+      ring.push_back(h);
+      verts.push_back(h->vertex);
+      h = h->next;
+    } while (h != h0);
+
+    int m = ring.size();
+    if (m < 4) continue;
+
+    int n_tri = m - 2;
+    int n_diag = m - 3;
+
+    VertexRef v0 = verts[0];
+
+    std::vector<FaceRef> tri(n_tri);
+    tri[0] = f;
+
+    for (int i = 1; i < n_tri; i++) {
+      tri[i] = emplace_face();
+    }
+
+    std::vector<HalfedgeRef> to_v0(n_diag);
+    std::vector<HalfedgeRef> from_v0(n_diag);
+    std::vector<EdgeRef> diag(n_diag);
+
+    for (int i = 0; i < n_diag; i++) {
+      to_v0[i] = emplace_halfedge();
+      from_v0[i] = emplace_halfedge();
+      diag[i] = emplace_edge();
+
+      to_v0[i]->twin = from_v0[i];
+      from_v0[i]->twin = to_v0[i];
+
+      to_v0[i]->edge = diag[i];
+      from_v0[i]->edge = diag[i];
+      diag[i]->halfedge = to_v0[i];
+
+      to_v0[i]->vertex = verts[i + 2];
+      from_v0[i]->vertex = v0;
+    }
+
+    auto H = [&](int i) -> HalfedgeRef { return ring[i % m]; };
+
+    tri[0]->halfedge = H(0);
+
+    H(0)->face = tri[0];
+    H(1)->face = tri[0];
+    to_v0[0]->face = tri[0];
+
+    H(0)->next = H(1);
+    H(1)->next = to_v0[0];
+    to_v0[0]->next = H(0);
+
+    for (int i = 1; i < n_diag; i++) {
+      FaceRef F = tri[i];
+      F->halfedge = from_v0[i - 1];
+
+      from_v0[i - 1]->face = F;
+      H(i + 1)->face = F;
+      to_v0[i]->face = F;
+
+      from_v0[i - 1]->next = H(i + 1);
+      H(i + 1)->next = to_v0[i];
+      to_v0[i]->next = from_v0[i - 1];
+    }
+
+    {
+      int i_last = n_tri - 1;
+      FaceRef F = tri[i_last];
+
+      F->halfedge = from_v0[n_diag - 1];
+
+      from_v0[n_diag - 1]->face = F;
+      H(m - 2)->face = F;
+      H(m - 1)->face = F;
+
+      from_v0[n_diag - 1]->next = H(m - 2);
+      H(m - 2)->next = H(m - 1);
+      H(m - 1)->next = from_v0[n_diag - 1];
+    }
+
+    v0->halfedge = H(0);
+
+    for (int i = 1; i < m; i++) {
+      verts[i]->halfedge = ring[i];
+    }
+  }
 }
 
 /*
@@ -34,14 +130,13 @@ void Halfedge_Mesh::linear_subdivide() {
 	for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
 		vertex_positions.insert({v, v->position});
 	}
-    // For every edge, assign the midpoint of its adjacent vertices to edge_vertex_positions[e]:
-	// (you may wish to investigate the helper functions of Halfedge_Mesh::Edge)
+
+  // For every edge, assign the midpoint of its adjacent vertices to edge_vertex_positions[e]:
 	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
 		edge_vertex_positions.insert({e, e->center()});
 	}
 
-    // For every *non-boundary* face, assign the centroid (i.e., arithmetic mean) to face_vertex_positions[f]:
-	// (you may wish to investigate the helper functions of Halfedge_Mesh::Face)
+  // For every *non-boundary* face, assign the centroid (i.e., arithmetic mean) to face_vertex_positions[f]:
 	for (FaceCRef f = faces.begin(); f != faces.end(); f++) {
 		if (f->boundary) continue; //ignore boundary faces for this check
 		face_vertex_positions.insert({f, f->center()});

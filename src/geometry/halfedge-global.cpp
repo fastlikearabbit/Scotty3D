@@ -31,19 +31,21 @@ void Halfedge_Mesh::linear_subdivide() {
 	//A2G2: linear subdivision
 
 	// For every vertex, assign its current position to vertex_positions[v]:
-
-	//(TODO)
-
+	for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+		vertex_positions.insert({v, v->position});
+	}
     // For every edge, assign the midpoint of its adjacent vertices to edge_vertex_positions[e]:
 	// (you may wish to investigate the helper functions of Halfedge_Mesh::Edge)
-
-	//(TODO)
+	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		edge_vertex_positions.insert({e, e->center()});
+	}
 
     // For every *non-boundary* face, assign the centroid (i.e., arithmetic mean) to face_vertex_positions[f]:
 	// (you may wish to investigate the helper functions of Halfedge_Mesh::Face)
-
-	//(TODO)
-
+	for (FaceCRef f = faces.begin(); f != faces.end(); f++) {
+		if (f->boundary) continue; //ignore boundary faces for this check
+		face_vertex_positions.insert({f, f->center()});
+	}
 
 	//use the helper function to actually perform the subdivision:
 	catmark_subdivide_helper(vertex_positions, edge_vertex_positions, face_vertex_positions);
@@ -72,15 +74,57 @@ void Halfedge_Mesh::catmark_subdivide() {
 	// https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface
 
 	// Faces
+	for (FaceCRef f = faces.begin(); f != faces.end(); f++) {
+		if (f->boundary) continue;
+		face_vertex_positions.insert({f, f->center()});
+	}
 
 	// Edges
+	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		if (!e->on_boundary()) {
+			Vec3 f_centroid = face_vertex_positions[e->halfedge->face];
+			Vec3 ftwin_centroid = face_vertex_positions[e->halfedge->twin->face];
+			edge_vertex_positions.insert({e, (2 * e->center() + f_centroid + ftwin_centroid) / 4});
+		} else {
+			edge_vertex_positions.insert({e, e->center()});
+		}
+	}
 
 	// Vertices
+	for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+		if (!v->on_boundary()) {
+			Vec3 op = v->position;
+			int n = v->degree();
+			Vec3 F, R;
+			HalfedgeRef h = v->halfedge;
+			do {
+					F += face_vertex_positions[h->face];
+					R += h->edge->center();
+					h = h->twin->next;
+			} while (h != v->halfedge);
+			F = F / n;
+			R = R / n;
+			vertex_positions.insert({v, (F + 2 * R + (n-3) * op) / n});
+		} else {
+			Vec3 op = v->position;
+			Vec3 neighbor_sum;
+			int boundary_neighbors = 0;
+			
+			HalfedgeRef h = v->halfedge;
+			do {
+				if (h->edge->on_boundary()) {
+					VertexRef neighbor = (h->vertex == v) ? h->twin->vertex : h->vertex;
+					neighbor_sum += neighbor->position;
+					boundary_neighbors++;
+				}
+				h = h->twin->next;
+			} while (h != v->halfedge);
+			vertex_positions.insert({v, neighbor_sum / 8.f + (3 / 4.f) * op});
+		}
+	}
 
-	
 	//Now, use the provided helper function to actually perform the subdivision:
 	catmark_subdivide_helper(vertex_positions, edge_vertex_positions, face_vertex_positions);
-
 }
 
 /*

@@ -1,6 +1,7 @@
 
 #include "halfedge.h"
 
+#include <cassert>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -327,9 +328,61 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::inset_vertex(FaceRef f) {
 	// A2Lx4 (OPTIONAL): inset vertex
+
+	if (f->boundary) return std::nullopt;
 	
-	(void)f;
-    return std::nullopt;
+	std::vector<HalfedgeRef> ot;
+	std::vector<VertexRef> ov;
+	
+	HalfedgeRef c = f->halfedge;
+	do {
+			ot.push_back(c);
+			ov.push_back(c->vertex);
+			c = c->next;
+	} while (c != f->halfedge);
+	
+	int n = f->degree();
+	
+	VertexRef v = emplace_vertex();
+	v->position = f->center();
+	
+	std::vector<HalfedgeRef> vh(n), vt(n);
+	std::vector<EdgeRef> ve(n);
+	std::vector<FaceRef> vf(n);
+	
+	for (int i = 0; i < n; i++) {
+		vh[i] = emplace_halfedge();
+		vt[i] = emplace_halfedge();
+		ve[i] = emplace_edge();
+		vf[i] = emplace_face();
+	}
+	
+	for (int i = 0; i < n; i++) {
+		int ni = (i + 1) % n;
+		int pi = (i - 1 + n) % n;
+		
+		vh[i]->vertex = v;
+		vh[i]->edge = ve[i];
+		vh[i]->face = vf[i];
+		vh[i]->twin = vt[i];
+		vh[i]->next = ot[i];
+		
+		vt[i]->vertex = ov[i];
+		vt[i]->edge = ve[i];
+		vt[i]->face = vf[pi];
+		vt[i]->twin = vh[i];
+		vt[i]->next = vh[pi];
+		
+		ot[i]->next = vt[ni];
+		ot[i]->face = vf[i];
+		
+		vf[i]->halfedge = ot[i];
+		ve[i]->halfedge = vh[i];
+	}
+	v->halfedge = vh[0];
+	erase_face(f);
+	
+	return v;
 }
 
 

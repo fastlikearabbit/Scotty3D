@@ -253,6 +253,9 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
 		HalfedgeRef h_new = emplace_halfedge();
 		HalfedgeRef t_new = emplace_halfedge();
 
+		interpolate_data({h, h->next}, h_new);
+		interpolate_data({t, t->next}, t_new);
+
 		h_new->vertex = v_left;
 		h_new->edge = e_new;
 		h_new->face = f_new;
@@ -282,6 +285,9 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
 
 		HalfedgeRef h_new = emplace_halfedge();
 		HalfedgeRef t_new = emplace_halfedge();
+
+		interpolate_data({h, h->next}, h_new);
+		interpolate_data({t, t->next}, t_new);
 
 		h_new->vertex = v_right;
 		h_new->edge = e_new;

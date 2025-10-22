@@ -366,7 +366,7 @@ bool Halfedge_Mesh::loop_subdivide() {
 		HalfedgeRef h = e->halfedge;
 		VertexRef v0 = h->vertex, v1 = h->twin->vertex;
 
-		if (is_new(v0) && !is_new(v1)) {
+		if (!is_new(v0) && is_new(v1)) {
 			flip_edge(e);
 		}
 	}
@@ -377,7 +377,7 @@ bool Halfedge_Mesh::loop_subdivide() {
 		HalfedgeRef h = e->halfedge;
 		VertexRef v0 = h->vertex, v1 = h->twin->vertex;
 
-		if (!is_new(v0) && is_new(v1)) {
+		if (is_new(v0) && !is_new(v1)) {
 			flip_edge(e);
 		}
 	}
@@ -386,8 +386,7 @@ bool Halfedge_Mesh::loop_subdivide() {
 	for (auto& [v, p] : vertex_new_pos) {
 		v->position = p;
 	}
-	std::cout << describe() << std::endl;
-
+	
 	return true;
 }
 

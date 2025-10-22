@@ -277,16 +277,21 @@ bool Halfedge_Mesh::loop_subdivide() {
 			} while (h != v->halfedge);
 
 			float u = (n == 3) ? 3.f / 16 : 3.f / (8 * n);
-
-			Vec3 v_old = v->position;
-			vertex_new_pos.insert({v, (1 - n * u) * v_old + u * neighbour_sum});
+			vertex_new_pos.insert({v, (1 - n * u) * v->position + u * neighbour_sum});
 		} else {
-			Vec3 v_old = v->position;
-			Vec3 v_next = v->halfedge->twin->vertex->position;
-			Vec3 v_prev = v->halfedge->twin->next->vertex->position;
-
-			vertex_new_pos.insert({v, 3.f / 4 * v_old + 1.f / 8 * (v_prev + v_next)});
-
+			HalfedgeRef h = v->halfedge;
+			while (!h->edge->on_boundary()) 
+					h = h->twin->next;
+			
+			VertexRef v_one = h->twin->vertex;
+			
+			HalfedgeRef h2 = h->twin->next;
+			while (!h2->edge->on_boundary()) {
+					h2 = h2->twin->next;
+			}
+			VertexRef v_other = h2->twin->vertex;
+			
+			vertex_new_pos[v] = 3.f / 4 * v->position + 1.f / 8 * (v_one->position + v_other->position);
 		}
 	}
 	    
@@ -306,14 +311,12 @@ bool Halfedge_Mesh::loop_subdivide() {
 			edge_new_pos.insert({e, (A->position + B->position) / 2.f});
 		}
 	}
-	std::cout << "\ninitial total edges: " << edges.size() << "\n";
-
 	// Next, we're going to split every edge in the mesh, in any order, placing
 	// the split vertex at the recorded edge_new_pos.
 	//
 	// We'll later need to distinguish edges that align with old edges to new
 	// edges added by splitting. So store references to the new edges:
-	std::unordered_set< EdgeRef > new_edges;
+	std::vector< EdgeRef > new_edges;
 
 	// Also note that in this loop, we only want to iterate over edges of the
 	// original mesh. Otherwise, we'll end up splitting edges that we just split
@@ -322,35 +325,36 @@ bool Halfedge_Mesh::loop_subdivide() {
 	// iterate over all edges in the mesh
 	int n = edges.size();
 	EdgeRef e = edges.begin();
-	for (int i = 0; i < n; i++) {
+	for (int i = 0; i < n;) {
 		EdgeRef nextEdge = e;
 		nextEdge++;
 
 		// do not split new edges
-		if (std::find(new_edges.begin(), new_edges.end(), e) == new_edges.end()) {
+		auto it = edge_new_pos.find(e);
+		if (it != edge_new_pos.end()) {
 			Vec3 new_pos = edge_new_pos.at(e);
+			VertexRef A = e->halfedge->vertex, B = e->halfedge->twin->vertex;
+
 			std::optional<VertexRef> v_split_opt = split_edge(e);
 			assert(v_split_opt.has_value());
 
 			VertexRef v = v_split_opt.value();
 			HalfedgeRef start = v->halfedge;
 			v->position = new_pos;
-
 			HalfedgeRef h = start;
 			do {
-				if (h->edge != e) new_edges.insert(h->edge);
+				VertexRef C = h->twin->vertex;
+				if (C != A && C != B) 
+					new_edges.emplace_back(h->edge);
 				h = h->twin->next;
 			} while (h != start);
 
-		} else {
-			// n++;
-		}
+			i++;
+		} 
 		e = nextEdge;
 	}
-	std::cout << "\nFINAL total edges: " << edges.size() << "\n";
-	std::cout << "total NEW edges: " << new_edges.size() << "\n"; 
 
-	// Now flip any new edge that connects a new and old vertex.
+	// Now flip any new edge that connects a new and old vertex
 	// To check if a vertex is new, you can use a simple helper that
 	// checks if has an entry in vertex_new_pos:
 	auto is_new = [&vertex_new_pos](VertexRef v) -> bool {
@@ -358,6 +362,7 @@ bool Halfedge_Mesh::loop_subdivide() {
 	};
 
 	for (EdgeRef e : new_edges) {
+		if (e->on_boundary()) continue;
 		HalfedgeRef h = e->halfedge;
 		VertexRef v0 = h->vertex, v1 = h->twin->vertex;
 
@@ -366,8 +371,9 @@ bool Halfedge_Mesh::loop_subdivide() {
 		}
 	}
 
-	// Now flip any new edge that connects an old and new vertex.
+	// old to new
 	for (EdgeRef e : new_edges) {
+		if (e->on_boundary()) continue;
 		HalfedgeRef h = e->halfedge;
 		VertexRef v0 = h->vertex, v1 = h->twin->vertex;
 
@@ -380,8 +386,8 @@ bool Halfedge_Mesh::loop_subdivide() {
 	for (auto& [v, p] : vertex_new_pos) {
 		v->position = p;
 	}
-	
 	std::cout << describe() << std::endl;
+
 	return true;
 }
 

@@ -1,5 +1,6 @@
 #include "halfedge.h"
 
+#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -261,41 +262,126 @@ bool Halfedge_Mesh::loop_subdivide() {
     
 	// Compute new positions for all the vertices in the input mesh using
 	// the Loop subdivision rule and store them in vertex_new_pos.
-	[[maybe_unused]]
 	std::unordered_map< VertexRef, Vec3 > vertex_new_pos;
+	for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+		if (!v->on_boundary()) {
+			HalfedgeRef h = v->halfedge;
+			int n = v->degree();
+
+			Vec3 neighbour_sum = Vec3(0.f, 0.f, 0.f);
+
+			h = v->halfedge;
+			do {
+				neighbour_sum += h->twin->vertex->position;
+				h = h->twin->next;
+			} while (h != v->halfedge);
+
+			float u = (n == 3) ? 3.f / 16 : 3.f / (8 * n);
+
+			Vec3 v_old = v->position;
+			vertex_new_pos.insert({v, (1 - n * u) * v_old + u * neighbour_sum});
+		} else {
+			Vec3 v_old = v->position;
+			Vec3 v_next = v->halfedge->twin->vertex->position;
+			Vec3 v_prev = v->halfedge->twin->next->vertex->position;
+
+			vertex_new_pos.insert({v, 3.f / 4 * v_old + 1.f / 8 * (v_prev + v_next)});
+
+		}
+	}
 	    
 	// Next, compute the subdivided vertex positions associated with edges, and
 	// store them in edge_new_pos:
-	[[maybe_unused]]
 	std::unordered_map< EdgeRef, Vec3 > edge_new_pos;
-    
+  for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		HalfedgeRef h = e->halfedge;
+		VertexRef A = h->vertex, B = h->twin->vertex;
+
+		// compute positions of new vertices
+		if (!e->on_boundary()) {
+			VertexRef C = h->next->twin->vertex;
+			VertexRef D = h->twin->next->twin->vertex;
+			edge_new_pos.insert({e, 3.f / 8 * (A->position + B->position) + 1.f / 8 * (C->position + D->position)});
+		} else {
+			edge_new_pos.insert({e, (A->position + B->position) / 2.f});
+		}
+	}
+	std::cout << "\ninitial total edges: " << edges.size() << "\n";
+
 	// Next, we're going to split every edge in the mesh, in any order, placing
 	// the split vertex at the recorded edge_new_pos.
 	//
 	// We'll later need to distinguish edges that align with old edges to new
 	// edges added by splitting. So store references to the new edges:
-	[[maybe_unused]]
-	std::vector< EdgeRef > new_edges;
+	std::unordered_set< EdgeRef > new_edges;
 
 	// Also note that in this loop, we only want to iterate over edges of the
 	// original mesh. Otherwise, we'll end up splitting edges that we just split
 	// (and the loop will never end!)
 
+	// iterate over all edges in the mesh
+	int n = edges.size();
+	EdgeRef e = edges.begin();
+	for (int i = 0; i < n; i++) {
+		EdgeRef nextEdge = e;
+		nextEdge++;
+
+		// do not split new edges
+		if (std::find(new_edges.begin(), new_edges.end(), e) == new_edges.end()) {
+			Vec3 new_pos = edge_new_pos.at(e);
+			std::optional<VertexRef> v_split_opt = split_edge(e);
+			assert(v_split_opt.has_value());
+
+			VertexRef v = v_split_opt.value();
+			HalfedgeRef start = v->halfedge;
+			v->position = new_pos;
+
+			HalfedgeRef h = start;
+			do {
+				if (h->edge != e) new_edges.insert(h->edge);
+				h = h->twin->next;
+			} while (h != start);
+
+		} else {
+			// n++;
+		}
+		e = nextEdge;
+	}
+	std::cout << "\nFINAL total edges: " << edges.size() << "\n";
+	std::cout << "total NEW edges: " << new_edges.size() << "\n"; 
+
 	// Now flip any new edge that connects a new and old vertex.
 	// To check if a vertex is new, you can use a simple helper that
 	// checks if has an entry in vertex_new_pos:
-	[[maybe_unused]]
 	auto is_new = [&vertex_new_pos](VertexRef v) -> bool {
 		return !vertex_new_pos.count(v);
 	};
 
-    // Now flip any new edge that connects an old and new vertex.
-    
-    // Finally, copy new vertex positions into the Vertex::position.
+	for (EdgeRef e : new_edges) {
+		HalfedgeRef h = e->halfedge;
+		VertexRef v0 = h->vertex, v1 = h->twin->vertex;
 
+		if (is_new(v0) && !is_new(v1)) {
+			flip_edge(e);
+		}
+	}
 
+	// Now flip any new edge that connects an old and new vertex.
+	for (EdgeRef e : new_edges) {
+		HalfedgeRef h = e->halfedge;
+		VertexRef v0 = h->vertex, v1 = h->twin->vertex;
 
-
+		if (!is_new(v0) && is_new(v1)) {
+			flip_edge(e);
+		}
+	}
+  
+	// Finally, copy new vertex positions into the Vertex::position.
+	for (auto& [v, p] : vertex_new_pos) {
+		v->position = p;
+	}
+	
+	std::cout << describe() << std::endl;
 	return true;
 }
 

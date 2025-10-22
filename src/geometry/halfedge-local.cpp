@@ -230,89 +230,81 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
 	}
 
 	VertexRef v = vopt.value();
+	HalfedgeRef h = v->halfedge;
+	HalfedgeRef t = h->twin;
+	HalfedgeRef h_next = h->next;
+	HalfedgeRef h_next_next = h_next->next;
+	HalfedgeRef t_next = t->next;
+	HalfedgeRef t_next_next = t_next->next;
+	HalfedgeRef t_next_next_next = t_next_next->next;
 
-	HalfedgeRef h1 = v->halfedge;
-	HalfedgeRef t1 = h1->twin;
-	HalfedgeRef h2 = t1->next->twin;
-	HalfedgeRef t2 = t1->next;
-	HalfedgeRef hp = t2->next->twin;
-	HalfedgeRef tn = hp->twin;
-	HalfedgeRef hn = h1->next;
-	HalfedgeRef tp = hn->twin;
+	HalfedgeRef h_prev = t_next->twin;
 
-	VertexRef v1 = t1->vertex;
-	VertexRef v2 = h2->vertex;
-	VertexRef v3 = tp->vertex;
-	VertexRef v4 = hp->vertex;
+	VertexRef v_left = h_next->twin->vertex;
+	VertexRef v_right = t_next_next->twin->vertex;
 
-	FaceRef f1 = t1->face;
-	FaceRef f2 = h1->face;
+	FaceRef f_left = h->face;
+	FaceRef f_right = t->face;
 
-	if (f1->boundary && f2->boundary) {
-		return std::nullopt;
+	if (!f_left->boundary) {
+		FaceRef f_new = emplace_face();
+		EdgeRef e_new = emplace_edge();
+
+		HalfedgeRef h_new = emplace_halfedge();
+		HalfedgeRef t_new = emplace_halfedge();
+
+		h_new->vertex = v_left;
+		h_new->edge = e_new;
+		h_new->face = f_new;
+		h_new->twin = t_new;
+		h_new->next = h;
+
+		t_new->vertex = v;
+		t_new->edge = e_new;
+		t_new->face = f_left;
+		t_new->twin = h_new;
+		t_new->next = h_next_next;
+
+		f_new->halfedge = h_new;
+		e_new->halfedge = h_new;
+
+		h->face = f_new;
+		h_next->face = f_new;
+		h_next->next = h_new;
+		h_prev->next = t_new;
+		
+		f_left->halfedge = t_new;
 	}
 
-	if (!f1->boundary) {
-		// std::cout << "\nHERE\n";
-		FaceRef f3 = emplace_face();
-		EdgeRef el = emplace_edge();
-		HalfedgeRef hl = emplace_halfedge();
-		HalfedgeRef tl = emplace_halfedge();
+	if (!f_right->boundary) {
+		FaceRef f_new = emplace_face();
+		EdgeRef e_new = emplace_edge();
 
-		f3->halfedge = hl;
-		el->halfedge = hl;
+		HalfedgeRef h_new = emplace_halfedge();
+		HalfedgeRef t_new = emplace_halfedge();
 
-		hl->vertex = v4;
-		hl->twin = tl;
-		hl->edge = el;
-		hl->face = f3;
-		hl->next = t2;
+		h_new->vertex = v_right;
+		h_new->edge = e_new;
+		h_new->face = f_new;
+		h_new->twin = t_new;
+		h_new->next = t_next;
 
-		tl->vertex = v;
-		tl->twin = hl;
-		tl->edge = el;
-		tl->face = f1;
-		tl->next = tn->next;
+		t_new->vertex = v;
+		t_new->edge = e_new;
+		t_new->face = f_right;
+		t_new->twin = h_new;
+		t_new->next = t_next_next_next;
 
-		t2->face = f3;
-		tn->face = f3;
-		t1->next = tl;
-		tn->next = hl;
+		f_new->halfedge = h_new;
+		e_new->halfedge = h_new;
 
-		f1->halfedge = t1;
+		t->next = t_new;
+		t_next->face = f_new;
+		t_next_next->face = f_new;
+		t_next_next->next = h_new;
+
+		f_right->halfedge = t_new;
 	}	
-
-	if (!f2->boundary) {
-		// std::cout << "here\n";
-		FaceRef f4 = emplace_face();
-		EdgeRef er = emplace_edge();
-		HalfedgeRef hr = emplace_halfedge();
-		HalfedgeRef tr = emplace_halfedge();
-
-		f4->halfedge = tr;
-		er->halfedge = tr;
-
-		hr->vertex = v;
-		hr->twin = tr;
-		hr->edge = er;
-		hr->face = f2;
-		hr->next = hn->next;
-
-		tr->vertex = v3;
-		tr->twin = hr;
-		tr->edge = er;
-		tr->face = f4;
-		tr->next = h1;
-
-		h1->face = f4;
-		hn->face = f4;
-		h2->next = hr;
-		hn->next = tr;
-
-		f2->halfedge = h2;
-	}
-
-	std::cout << describe() << std::endl;
   return v;
 }
 

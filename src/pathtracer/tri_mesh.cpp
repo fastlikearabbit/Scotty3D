@@ -16,7 +16,17 @@ BBox Triangle::bbox() const {
     // Beware of flat/zero-volume boxes! You may need to
     // account for that here, or later on in BBox::hit.
 
+		Vec3 A = vertex_list[v0].position;
+		Vec3 B = vertex_list[v1].position;
+		Vec3 C = vertex_list[v2].position;
     BBox box;
+		box.min = Vec3(std::min({A.x, B.x, C.x}), 
+								std::min({A.y, B.y, C.y}), 
+								std::min({A.z, B.z, C.z}));
+
+		box.max = Vec3(std::max({A.x, B.x, C.x}), 
+						std::max({A.y, B.y, C.y}), 
+						std::max({A.z, B.z, C.z}));
     return box;
 }
 

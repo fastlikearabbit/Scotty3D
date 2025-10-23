@@ -77,6 +77,16 @@ struct BBox {
 		}
 		return *this;
 	}
+	
+	// zero volume
+	bool is_empty() const {
+    return min.x >= max.x || min.y >= max.y || min.z >= max.z;
+	}
+
+	// zero surface area
+	bool is_degenerate() const {
+			return min.x > max.x || min.y > max.y || min.z > max.z;
+	}
 
 	bool hit(const Ray& ray, Vec2& times) const {
 		//A3T3 - bbox hit
@@ -86,7 +96,51 @@ struct BBox {
 		// [times.x,times.y], update times with the new intersection times.
 		// This means at least one of tmin and tmax must be within the range
 
-		return false;
+    float tmin, tmax;
+		Vec3 r = ray.point;
+		Vec3 invdir = 1 / ray.dir;
+
+		if (invdir.x >= 0) { 
+				tmin = (min.x - r.x) * invdir.x; 
+				tmax = (max.x - r.x) * invdir.x; 
+		} else { 
+				tmin = (max.x - r.x) * invdir.x; 
+				tmax = (min.x - r.x) * invdir.x; 
+		}
+		if (tmin > tmax) std::swap(tmin, tmax); 
+
+    if (tmax < times.x || tmin > times.y)
+			return false;
+
+		tmin = std::max(tmin, times.x);
+		tmax = std::min(tmax, times.y);
+
+    float tymin = (min.y - r.y) * invdir.y; 
+    float tymax = (max.y - r.y) * invdir.y; 
+
+    if (tymin > tymax) std::swap(tymin, tymax); 
+
+    if ((tmin > tymax) || (tymin > tmax)) 
+        return false; 
+
+    if (tymin > tmin) tmin = tymin; 
+    if (tymax < tmax) tmax = tymax; 
+
+    float tzmin = (min.z - r.z) * invdir.z; 
+    float tzmax = (max.z - r.z) * invdir.z; 
+
+    if (tzmin > tzmax) std::swap(tzmin, tzmax); 
+
+    if ((tmin > tzmax) || (tzmin > tmax)) 
+        return false; 
+
+    if (tzmin > tmin) tmin = tzmin; 
+    if (tzmax < tmax) tmax = tzmax; 
+    
+    times.x = tmin;
+    times.y = tmax;
+
+    return true; 
 	}
 
 	/// Get the eight corner points of the bounding box

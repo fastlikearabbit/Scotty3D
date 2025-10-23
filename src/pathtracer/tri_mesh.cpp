@@ -2,6 +2,7 @@
 #include "../test.h"
 
 #include "samplers.h"
+#include <limits>
 #include "tri_mesh.h"
 
 namespace PT {
@@ -20,29 +21,53 @@ BBox Triangle::bbox() const {
 }
 
 Trace Triangle::hit(const Ray& ray) const {
-	//A3T2
+	Trace ret;
+	ret.origin = ray.point;
+
+	Tri_Mesh_Vert v_0 = vertex_list[v0];
+	Tri_Mesh_Vert v_1 = vertex_list[v1];
+	Tri_Mesh_Vert v_2 = vertex_list[v2];
 	
-	// Each vertex contains a postion and surface normal
-    Tri_Mesh_Vert v_0 = vertex_list[v0];
-    Tri_Mesh_Vert v_1 = vertex_list[v1];
-    Tri_Mesh_Vert v_2 = vertex_list[v2];
-    (void)v_0;
-    (void)v_1;
-    (void)v_2;
+	Vec3 o = ray.point, d = ray.dir;
+	Vec3 s = o - v_0.position;
+	Vec3 e_1 = v_1.position - v_0.position;
+	Vec3 e_2 = v_2.position - v_0.position;
 
-    // TODO (PathTracer): Task 2
-    // Intersect the ray with the triangle defined by the three vertices.
+	float det = dot(cross(e_1, d), e_2);
+	if (std::fabs(det) < std::numeric_limits<float>::epsilon()) {
+		ret.hit = false;       
+		return ret;
+	}
 
-    Trace ret;
-    ret.origin = ray.point;
-    ret.hit = false;       // was there an intersection?
-    ret.distance = 0.0f;   // at what distance did the intersection occur?
-    ret.position = Vec3{}; // where was the intersection?
-    ret.normal = Vec3{};   // what was the surface normal at the intersection?
-                           // (this should be interpolated between the three vertex normals)
-	ret.uv = Vec2{};	   // What was the uv associated with the point of intersection?
-						   // (this should be interpolated between the three vertex uvs)
-    return ret;
+	float invdet = 1.f / det;
+	float u = invdet * dot(-cross(s, e_2), d); 
+	if (u < 0 || u > 1) {
+		ret.hit = false;
+		return ret;
+	}
+	float v = invdet * dot(cross(e_1, d), s);
+	if (v < 0 || (u + v > 1)) {
+		ret.hit = false;
+		return ret;
+	}
+	float t = invdet * dot(-cross(s, e_2), e_1);
+	Vec3 intersection = o + t * d;
+
+	if (t <= ray.dist_bounds.x || t >= ray.dist_bounds.y) {
+		ret.hit = false;       
+		return ret;
+	}
+
+	ret.hit = true;       
+	ret.distance = (intersection - o).norm();
+	ret.position = intersection;
+	Vec3 interpolated_normal =(1 - u - v) * v_0.normal + u * v_1.normal + v * v_2.normal;
+	ret.normal = interpolated_normal.unit(); 
+
+	Vec2 interpolated_uv = (1 - u - v) * v_0.uv + u * v_1.uv + v * v_2.uv;
+	ret.uv = interpolated_uv;	
+
+	return ret;
 }
 
 Triangle::Triangle(Tri_Mesh_Vert* verts, uint32_t v0, uint32_t v1, uint32_t v2)

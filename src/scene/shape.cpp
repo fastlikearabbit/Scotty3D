@@ -1,6 +1,7 @@
 
 #include "shape.h"
 #include "../geometry/util.h"
+#include <limits>
 
 namespace Shapes {
 
@@ -19,24 +20,53 @@ BBox Sphere::bbox() const {
 }
 
 PT::Trace Sphere::hit(Ray ray) const {
-	//A3T2 - sphere hit
-
-    // TODO (PathTracer): Task 2
-    // Intersect this ray with a sphere of radius Sphere::radius centered at the origin.
-
-    // If the ray intersects the sphere twice, ret should
-    // represent the first intersection, but remember to respect
-    // ray.dist_bounds! For example, if there are two intersections,
-    // but only the _later_ one is within ray.dist_bounds, you should
-    // return that one!
-
     PT::Trace ret;
     ret.origin = ray.point;
-    ret.hit = false;       // was there an intersection?
-    ret.distance = 0.0f;   // at what distance did the intersection occur?
-    ret.position = Vec3{}; // where was the intersection?
-    ret.normal = Vec3{};   // what was the surface normal at the intersection?
-	ret.uv = Vec2{}; 	   // what was the uv coordinates at the intersection? (you may find Sphere::uv to be useful)
+    
+    Vec3 o = ray.point;
+    Vec3 d = ray.dir;
+    
+    float a = d.norm_squared();
+    float b = 2.0f * dot(o, d);
+    float c = o.norm_squared() - radius * radius;
+    
+    float discriminant = b * b - 4.0f * a * c;
+    
+    if (discriminant < 0.0f) {
+        ret.hit = false;
+        ret.distance = 0.0f;
+        ret.position = Vec3{};
+        ret.normal = Vec3{};
+        ret.uv = Vec2{};
+        return ret;
+    }
+    
+    float sqrt_disc = std::sqrt(discriminant);
+    float t1 = (-b - sqrt_disc) / (2.0f * a);
+    float t2 = (-b + sqrt_disc) / (2.0f * a);
+    
+    float t = -1.0f;    
+    if (t1 >= ray.dist_bounds.x && t1 <= ray.dist_bounds.y) {
+        t = t1;
+    } else if (t2 >= ray.dist_bounds.x && t2 <= ray.dist_bounds.y) {
+        t = t2; 
+    }
+    
+    if (t < 0.0f) {
+        ret.hit = false;
+        ret.distance = 0.0f;
+        ret.position = Vec3{};
+        ret.normal = Vec3{};
+        ret.uv = Vec2{};
+        return ret;
+    }
+    
+    ret.hit = true;
+    ret.distance = t;
+    ret.position = ray.at(t);
+    ret.normal = ret.position.unit();
+    ret.uv = Sphere::uv(ret.normal);
+    
     return ret;
 }
 

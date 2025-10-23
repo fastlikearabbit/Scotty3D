@@ -492,24 +492,28 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::extrude_face(FaceRef f) {
 		ch[i]->twin = ct[i];
 		ch[i]->next = bt[i];
 		ch[i]->face = fin[i];
+		ch[i]->corner_normal = Vec3(0.0f, 0.0f, 1.0f);
 
 		ct[i]->vertex = bv[ni];
 		ct[i]->edge = ec[i];
 		ct[i]->twin = ch[i];
 		ct[i]->next = oh[ni];
 		ct[i]->face = fin[ni];
+		ct[i]->corner_normal = Vec3(0.0f, 0.0f, 1.0f);
 
 		bh[i]->vertex = bv[i];
 		bh[i]->edge = be[i];
 		bh[i]->twin = bt[i];
 		bh[i]->next = bh[ni];
 		bh[i]->face = f;
+		bh[i]->corner_normal = Vec3(0.0f, 0.0f, 1.0f);
 
 		bt[i]->vertex = bv[ni];
 		bt[i]->edge = be[i];
 		bt[i]->twin = bh[i];
 		bt[i]->next = ct[pi];
 		bt[i]->face = fin[i];
+		bt[i]->corner_normal = Vec3(0.0f, 0.0f, 1.0f);
 
 		ec[i]->halfedge = ch[i];
 		be[i]->halfedge = bt[i];

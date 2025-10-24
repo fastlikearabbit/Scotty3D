@@ -4,6 +4,7 @@
 #include "instance.h"
 #include "tri_mesh.h"
 
+#include <limits>
 #include <stack>
 
 namespace PT {
@@ -24,35 +25,107 @@ struct SAHBucketData {
 template<typename Primitive>
 void BVH<Primitive>::build(std::vector<Primitive>&& prims, size_t max_leaf_size) {
 	//A3T3 - build a bvh
-
 	// Keep these
-    nodes.clear();
-    primitives = std::move(prims);
+	nodes.clear();
+	primitives = std::move(prims);
+	
+	root_idx = 0;
 
-    // Construct a BVH from the given vector of primitives and maximum leaf
-    // size configuration.
+	// Construct a BVH from the given vector of primitives and maximum leaf
+	// size configuration.
 
-	//TODO
+	BBox world_bbox;
 
+	for (const auto& prim: primitives) {
+		world_bbox.enclose(prim.bbox().center());
+	}
+
+	// BVHBuildData build_data;
+	constexpr int nbuckets = 32;
+	constexpr int dim = 3;
+	SAHBucketData buckets[nbuckets][dim];
+
+	// x = 0, y = 1, z = 2
+	for (int axis = 0; axis < 2; axis++) {
+		std::sort(primitives, [axis](Primitive p1, Primitive p2) { return p1.bbox().center()[axis] < p2.bbox.center()[axis]; });
+		int n = primitives.size();
+
+		for (int i = 0; i < n; i++) {
+			// compute bin for primitive primitives[i].bbox().center()
+		}
+
+		float best_cost = std::numeric_limits<float>::infinity();
+		int best_axis = -1;
+		int best_partition_index = -1;
+
+		for (int j = 0; j < nbuckets; j++) {
+			BBox a;
+			a.enclose(buckets[0][axis].bb);
+			a.enclose(buckets[j][axis].bb);
+			BBox b;
+			b.enclose(buckets[j][axis].bb);
+			b.enclose(buckets[n-1][axis].bb);
+
+			float cost = a.surface_area() * j + b.surface_area() * (nbuckets - j);
+			if (cost < best_cost) {
+				best_cost = cost;
+				best_axis = axis;
+				best_partition_index = j;
+			}
+		}
+	}
+
+	// do the partition
+
+}
+
+template<typename Primitive>
+void BVH<Primitive>::find_closest_hit(const Ray& ray, Node& node, Trace& best) {
+	Vec2 times = ray.dist_bounds;
+
+	if (!node.bbox.hit(ray, times) || times.x > best.distance) return;
+
+	if (node.is_leaf()) {
+		for (size_t i = node.start; i < node.start + node.size; i++) {
+			auto& prim = primitives[i];
+			Trace info = prim.hit(ray);
+			if (info.hit && info.distance < best.distance) {
+				best = info;
+			}
+		}
+	} else {
+		Node& left = nodes.at(node.l);
+		Node& right = nodes.at(node.r);
+		
+		bool hit_left = left.bbox.hit(ray, times);
+		float left_hit_time = times.x;
+		bool hit_right = right.bbox.hit(ray, times);
+		float right_hit_time = times.x;
+
+		Node& first = (hit_left && left_hit_time < right_hit_time) ? left : right;
+		Node& second = (hit_left && left_hit_time < right_hit_time) ? right : left;
+
+		find_closest_hit(ray, first, best);
+		if (hit_right && best.distance > right_hit_time) {
+			find_closest_hit(ray, second, best);
+		}
+	}
 }
 
 template<typename Primitive> Trace BVH<Primitive>::hit(const Ray& ray) const {
 	//A3T3 - traverse your BVH
 
-    // Implement ray - BVH intersection test. A ray intersects
-    // with a BVH aggregate if and only if it intersects a primitive in
-    // the BVH that is not an aggregate.
+	// Implement ray - BVH intersection test. A ray intersects
+	// with a BVH aggregate if and only if it intersects a primitive in
+	// the BVH that is not an aggregate.
 
-    // The starter code simply iterates through all the primitives.
-    // Again, remember you can use hit() on any Primitive value.
+	// The starter code simply iterates through all the primitives.
+	// Again, remember you can use hit() on any Primitive value.
 
 	//TODO: replace this code with a more efficient traversal:
-    Trace ret;
-    for(const Primitive& prim : primitives) {
-        Trace hit = prim.hit(ray);
-        ret = Trace::min(ret, hit);
-    }
-    return ret;
+	Trace ret;
+	find_closest_hit(ray, nodes[root_idx], ret);
+	return ret;
 }
 
 template<typename Primitive>
